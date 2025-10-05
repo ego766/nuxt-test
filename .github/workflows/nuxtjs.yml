@@ -1,78 +1,98 @@
-# 自动化部署名称
-name: Publish And Deploy Demo
- 
-# 触发部署的条件: 当 master 分支, 有 push 的操作, 即可触发。
+name: nuxr-app Nuxt.js Deploy
+
 on:
   push:
-    branches: # 此处不仅限于监听分支, 还可监听 tag
-      - master
-    paths-ignore: # 下列文件的变更不触发部署，可以自行添加
-      - README.md
-      - LICENSE
- 
+    branches: [ master ]
+
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest # 使用ubuntu系统镜像运行自动化脚本
-    steps: # 进入自动化步骤
- 
-    # 第一步，下载代码仓库
-    - name: Checkout
-      uses: actions/checkout@master
- 
-    # 打包构建
-    - name: Build
-      uses: actions/setup-node@master
-    - run: npm install
+  build:
+    # needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - run: npm ci
     - run: npm run build
-    # 将这些 .nuxt static nuxt.config.js package.json package-lock.json pm2.config.json 文件打包在 release.tgz 中
-     # 此处是为了在方便，在服务器中直接解压，获得所有文件，无需单独传
-     # pm2 帮助我们在 Node服务器，启动项目的一个工具，具体可查看官网 https://github.com/Unitech/pm2
-    - run: tar -zcvf release.tgz .nuxt static nuxt.config.js package.json package-lock.json pm2.config.json
- 
-    # 发布版本 Release
-      # 与 Github 建立连接( 此处用于将 release.tgz 上传到 github 上 )
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@master
-      env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN }}
+    - name: Verify build output
+      run: |
+          pwd
+          ls -la .output
+          echo "Total files in .output: $(find .output -type f | wc -l)"
+    - name: Fix permissions
+      run: |
+        ls -la .output
+        chmod -R 755 .output
+
+    - name: Copy ecosystem.config.cjs
+      run: |
+        echo "Copying ecosystem.config.cjs to .output ..."
+        cp ecosystem.config.cjs .output/ecosystem.config.cjs
+        echo "Verifying copy:"
+        ls -la .output/ecosystem.config.cjs
+        echo "Contents of copied file:"
+        cat .output/ecosystem.config.cjs
+   #upload-artifact 上传.output文件夹有问题，这里我们用压缩包 
+    - name: Create build archive
+      run: |
+        echo "=== Creating archive ==="
+        tar -czf build-output.tar.gz .output/
+        ls -la build-output.tar.gz
+        echo "Archive size: $(du -h build-output.tar.gz)"
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: false
-        prerelease: false
- 
-    # 上传构建结果到 Release
-       # 将 release.tgz 上传到 github 上
-    - name: Upload Release Asset
-      id: upload-release-asset
-      uses: actions/upload-release-asset@master
-      env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN }}
+        name: build-files
+        path: build-output.tar.gz
+        retention-days: 1
+        if-no-files-found: error
+        compression-level: 6
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # github action 访问云服务器需要用户名、主机ip、sshprivatekey，参数配置在Github Action中，指定的environment，例如服务器的SSH_PRIVATE_KEY
+    environment: production
+    steps:
+    - uses: actions/checkout@v4
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./release.tgz
-        asset_name: release.tgz
-        asset_content_type: application/x-tgz
- 
-    # 部署到服务器
-    - name: Deploy
-      uses: appleboy/ssh-action@master
+        name: build-files
+        path: ./
+    - name: Extract build files
+      run: |
+        tar -xzf build-output.tar.gz
+        ls -la .output/
+        
+    - name: Deploy to server
+      run: |
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
+        chmod 600 private_key
+        rsync -avz --delete -e "ssh -i private_key -o StrictHostKeyChecking=no" \
+          .output/ ${{ secrets.USERNAME }}@${{ secrets.HOST }}:${{ secrets.REMOTE_PATH }}
+        rm private_key
+        
+    - name: Restart services
+      uses: appleboy/ssh-action@v1.0.0
       with:
-        host: ${{ secrets.HOST }} # 公网 IP 或 域名
-        username: ${{ secrets.USERNAME }} # 登录名
-        password: ${{ secrets.PASSWORD }} # 密码
-        port: ${{ secrets.PORT }} # 端口
-        # 类似在服务端的终端-执行以下操作
-          # 1. 找到需要存放文件的地方
-          # 2. 从 Github 上将 release.tgz 复制一份放入文件内
-          # 3. 解压 release.tgz 文件
-          # 4. 安装插件
-          # 5. 重启 pm2, 并执行 pm2.config.json 内操作，
-          # 6. pm2.config.json 是 启动 项目，( npm start )
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          cd /home/realworld_nuxt
-          wget https://github.com/ego766/nuxt-test/releases/latest/download/release.tgz -O release.tgz
-          tar zxvf release.tgz
-          npm install --production
-          pm2 reload pm2.config.json
+          cd ${{ secrets.REMOTE_PATH }}
+          echo "Current directory: $(pwd)"
+          echo "Checking if ecosystem.config.cjs exists:"
+          ls -la ecosystem.config.cjs
+          echo "Installing production dependencies..."
+          npm install --production --silent
+          echo "Installing PM2 globally..."
+          npm install -g pm2 --registry https://registry.npmjs.org/
+          npx pm2 reload ecosystem.config.cjs
+          echo "Current PM2 status:"
+          npx pm2 list
+          echo "Deployment completed successfully"
+
