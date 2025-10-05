@@ -11,9 +11,6 @@ importers:
       '@googlemaps/markerclusterer':
         specifier: ^2.6.2
         version: 2.6.2
-      '@micro-zoe/micro-app':
-        specifier: 1.0.0-rc.27
-        version: 1.0.0-rc.27
       '@nuxt/content':
         specifier: 3.7.1
         version: 3.7.1(better-sqlite3@12.4.1)(magicast@0.3.5)(valibot@1.1.0(typescript@5.9.3))
@@ -569,9 +566,6 @@ packages:
     resolution: {integrity: sha512-llMXd39jtP0HpQLVI37Bf1m2ADlEb35GYSh1SDSLsBhR+5iCxiNGlT31yqbNtVHygHAtMy6dWFERpU2JgufhPg==}
     engines: {node: '>=18'}
     hasBin: true
-
-  '@micro-zoe/micro-app@1.0.0-rc.27':
-    resolution: {integrity: sha512-FctYIwS1lfzaduCKHzMB8dpOg1ugGYejeeV+tE7LvLMmmbxRl2HaO4dlydUYu/pTXTFEGMsnNul+6kx/8rfcAQ==}
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -5947,8 +5941,6 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
-
-  '@micro-zoe/micro-app@1.0.0-rc.27': {}
 
   '@napi-rs/wasm-runtime@0.2.12':
     dependencies:

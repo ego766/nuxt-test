@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@googlemaps/markerclusterer": "^2.6.2",
-    "@micro-zoe/micro-app": "1.0.0-rc.27",
     "@nuxt/content": "3.7.1",
     "@nuxt/eslint": "1.9.0",
     "@nuxt/image": "1.11.0",
